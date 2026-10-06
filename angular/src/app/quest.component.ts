@@ -42,20 +42,24 @@ import { LESSONS } from './data';
           <button class="big" (click)="startStudy()">▶ 1. Practice</button>
           <button class="big sec" (click)="startTest()">✏️ 2. Test</button>
         </div>
-        <div class="words" style="font-size:18px;margin-top:16px;line-height:2.1">
-          @for (w of L[2]; track $index) { <b (click)="sp.say(w, { rate: 1 })">{{ w }}</b> }
-        </div>
       </div>
 
       @if (studyOn) {
         <div class="card" style="text-align:center">
           <div class="hint">Word {{ sIdx+1 }} of {{ L[2].length }}</div>
           <div class="segbox lg" [innerHTML]="sSeg"></div>
-          <div class="row" style="justify-content:center">
-            <button class="big" (click)="sp.say(sWord, { rate: 1 })">🔊 Hear</button>
-            <button class="sec" (click)="sSound()">Sound it out</button>
-            <button class="sec" (click)="sp.spell(sWord)">Spell</button>
+          <div class="row" style="justify-content:center;gap:12px">
+            <button class="big" (click)="sp.say(sWord, { rate: 1 })" title="Pronounce word">🔊 Pronounce</button>
+            <button class="big sec" (click)="readMeaning()" [disabled]="loadingMeaning">
+              📖 {{ loadingMeaning ? 'Loading...' : 'Meaning' }}
+            </button>
           </div>
+          @if (sMeaning) {
+            <div class="card" style="margin-top:14px;background:var(--bg2, #fbf7ee);padding:12px;border-radius:10px;text-align:left">
+              <span class="hint" style="font-weight:bold;display:block;margin-bottom:4px">Meaning:</span>
+              <p style="margin:0;font-size:16px;line-height:1.4">{{ sMeaning }}</p>
+            </div>
+          }
           <div class="row" style="justify-content:space-between;margin-top:16px">
             <button class="sec" (click)="sPrev()">◀ Back</button>
             <button class="sec" (click)="studyOn=false">Close</button>
@@ -92,6 +96,9 @@ export class QuestComponent {
   LESSONS = LESSONS; BADGES = BADGES;
   idx = Math.min(this.store.get('planDay', 0), this.store.maxUnlockedDay());
   studyOn = false; sIdx = 0; sSeg = '';
+  sMeaning = ''; loadingMeaning = false;
+  private meaningCache: { [word: string]: string } = {};
+
   done(i: number) { return !!this.store.G.days[i]?.completed; }
   get L() { return LESSONS[this.idx]; }
   get stars() { const s = this.store.G.days[this.idx]?.stars || 0; return '★'.repeat(s) + '☆'.repeat(3 - s); }
@@ -103,10 +110,61 @@ export class QuestComponent {
   next() { const n = this.idx + 1; if (n <= this.store.maxUnlockedDay()) this.go(n); else this.store.toast('Score 89%+ to unlock the next day.'); }
   tile(i: number) { if (this.store.dayUnlocked(i)) this.go(i); else this.store.toast('Finish the earlier days (89%+) to unlock this one.'); }
   startStudy() { this.studyOn = true; this.sIdx = 0; this.store.touchStreak(); this.showStudy(); }
-  showStudy() { const w = this.sWord; this.sSeg = /\s/.test(w) ? `<span style="font-size:22px">${w}</span>` : this.sp.segHtml(w); this.sp.say(w, { rate: 1 }); }
+  showStudy() {
+    this.sMeaning = ''; this.loadingMeaning = false;
+    const w = this.sWord;
+    this.sSeg = /\s/.test(w) ? `<span style="font-size:22px">${w}</span>` : this.sp.segHtml(w);
+    this.sp.say(w, { rate: 1 });
+  }
   sPrev() { if (this.sIdx > 0) { this.sIdx--; this.showStudy(); } }
   sNext() { if (this.sIdx < this.L[2].length - 1) { this.sIdx++; this.showStudy(); } else this.startTest(); }
   sSound() { const w = this.sWord; if (w && !/\s/.test(w)) this.sp.soundOut(w, i => this.sSeg = this.sp.segHtml(w, i)); }
+  
+  async readMeaning() {
+    const w = this.sWord.trim().toLowerCase();
+    if (!w) return;
+    if (this.meaningCache[w]) {
+      this.sMeaning = this.meaningCache[w];
+      this.sp.say(this.sMeaning);
+      return;
+    }
+    this.loadingMeaning = true;
+    this.sMeaning = '';
+    try {
+      const res = await fetch('https://api.dictionaryapi.dev/api/v2/entries/en/' + encodeURIComponent(w));
+      if (res.ok) {
+        const data = await res.json();
+        const def = data?.[0]?.meanings?.[0]?.definitions?.[0]?.definition;
+        if (def) {
+          this.sMeaning = def;
+          this.meaningCache[w] = def;
+          this.sp.say(def);
+          this.loadingMeaning = false;
+          return;
+        }
+      }
+    } catch {}
+    try {
+      const res = await fetch(`https://api.datamuse.com/words?sp=${encodeURIComponent(w)}&max=1&md=d`);
+      if (res.ok) {
+        const data = await res.json();
+        const rawDef = data?.[0]?.defs?.[0];
+        if (rawDef) {
+          const parts = rawDef.split('\t');
+          const def = parts.length > 1 ? parts[1] : parts[0];
+          this.sMeaning = def;
+          this.meaningCache[w] = def;
+          this.sp.say(def);
+          this.loadingMeaning = false;
+          return;
+        }
+      }
+    } catch {}
+    this.sMeaning = 'No meaning found for this word.';
+    this.sp.say('No meaning found for this word.');
+    this.loadingMeaning = false;
+  }
+
   startTest() {
     this.store.pendingTest = { name: `Day ${this.idx + 1} — ${this.L[0]}`, words: this.L[2], day: this.idx };
     this.router.navigate(['/test']);
