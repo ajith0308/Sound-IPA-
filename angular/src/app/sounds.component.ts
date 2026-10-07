@@ -1,28 +1,41 @@
 import { Component } from '@angular/core';
-import { CommonModule } from '@angular/common';
-import { RouterLink } from '@angular/router';
 import { SpeechService } from './speech.service';
 import { PHON } from './data';
+import { UI } from './ui';
 
 @Component({
   selector: 'app-sounds',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [...UI],
   template: `
-  <div class="appbar"><a routerLink="/"><button class="sec">← Home</button></a><div class="appbar-title">🔤 Sounds &amp; spellings</div></div>
-  <div class="card"><p style="margin:0">The 44 sounds of English and the letters that spell them. Tap a card to hear its example words, or tap any underlined word.</p></div>
-  @for (grp of PHON; track grp[0]) {
-    <div class="grp-title">{{ grp[0] }}</div>
-    <div class="sgrid">
-      @for (it of grp[1]; track $index) {
-        <div class="scard" [class.v]="isVowel(grp[0])" (click)="sayAll(it[3])">
-          <div><span class="key">{{ it[0] }}</span> <span class="hint" style="font-size:14px">{{ it[1] }}</span></div>
-          <div>@for (s of it[2].split(','); track $index) { <span class="chip">{{ s.trim() }}</span> }</div>
-          <div class="words">@for (w of it[3].split(','); track $index) { <b (click)="$event.stopPropagation(); sp.say(w.trim(), { rate: 1 })">{{ w.trim() }}</b> }</div>
-        </div>
-      }
-    </div>
-  }
+  <div class="page">
+    <ui-page-head title="The 44 Sounds" sub="Each sound of English and the letters that spell it. Tap a card to hear its examples." back="/"/>
+    @for (grp of PHON; track grp[0]) {
+      <h2 class="section-title">
+        <span>{{ grp[0] }}</span>
+        <span class="chip" [class.vowel]="isVowel(grp[0])" [class.primary]="!isVowel(grp[0])">{{ grp[1].length }} sounds</span>
+      </h2>
+      <div class="sound-grid">
+        @for (it of grp[1]; track $index) {
+          <div class="scard" [class.v]="isVowel(grp[0])" (click)="sayAll(it[3])" role="button" tabindex="0" (keydown.enter)="sayAll(it[3])">
+            <div class="scard-head">
+              <span class="key">{{ it[0] }}</span>
+              <div style="min-width:0">
+                <div class="ipa">{{ it[1] }}</div>
+                <div class="spell-row" style="margin-top:4px">@for (s of it[2].split(','); track $index) { <span class="chip">{{ s.trim() }}</span> }</div>
+              </div>
+              <span class="icon-btn sm play-mini" aria-hidden="true"><ui-icon name="volume"/></span>
+            </div>
+            <div class="word-pills">
+              @for (w of it[3].split(','); track $index) {
+                <button class="word-pill" (click)="$event.stopPropagation(); sp.say(w.trim(), { rate: 1 })">{{ w.trim() }}</button>
+              }
+            </div>
+          </div>
+        }
+      </div>
+    }
+  </div>
   `
 })
 export class SoundsComponent {

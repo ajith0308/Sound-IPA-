@@ -5,5 +5,15 @@ service cloud.firestore {
     match /users/{userId}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
+    // Shared dictionary cache: anyone can read; only signed-in users can add/update a
+    // short definition. No deletes. (The seed script uses an admin token, which bypasses rules.)
+    match /meanings/{word} {
+      allow read: if true;
+      allow create, update: if request.auth != null
+        && request.resource.data.keys().hasOnly(['text', 'updatedAt'])
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() < 2000;
+    }
   }
 }

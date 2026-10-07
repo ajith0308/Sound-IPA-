@@ -51,7 +51,16 @@ export class FirebaseService {
     try { await signInWithPopup(this.auth, new GoogleAuthProvider()); this.status = ''; }
     catch (e: any) { this.status = this.errMsg(e); console.error('sign-in failed', e); }
   }
-  async signOutUser() { try { if (this.auth) await signOut(this.auth); } catch {} this.store.set('guest', false); this.guest.set(false); }
+  async signOutUser() {
+    // Push any pending changes to the cloud, stop listening, then remove this user's data from the device.
+    clearTimeout(this.saveTimer);
+    if (this.unsub) { this.unsub(); this.unsub = null; }
+    await this.saveNow();
+    try { if (this.auth) await signOut(this.auth); } catch {}
+    this.user.set(null);
+    this.store.clearUserData();
+    this.store.set('guest', false); this.guest.set(false);
+  }
   continueGuest() { this.store.set('guest', true); this.guest.set(true); }
   backToLogin() { this.store.set('guest', false); this.guest.set(false); }
 
@@ -93,5 +102,40 @@ export class FirebaseService {
       await setDoc(this.ref(u.uid), { game: this.store.G, lists: this.store.get('lists_ng', {}), updatedAt: Date.now() }, { merge: true });
       this.status = 'Synced.';
     } catch (e) { console.error('sync failed', e); this.status = 'Could not sync (local saved).'; }
+  }
+
+  async getMeaningCloud(word: string): Promise<string | null> {
+    if (!this.db) return null;
+    try {
+      const snap = await getDoc(doc(this.db, 'meanings', word.toLowerCase()));
+      if (snap.exists() && snap.data()?.['text']) {
+        return snap.data()['text'];
+      }
+    } catch (e) { console.error('getMeaningCloud error:', e); }
+    return null;
+  }
+
+  async saveMeaningCloud(word: string, text: string): Promise<void> {
+    if (!this.db || !text) return;
+    try {
+      await setDoc(doc(this.db, 'meanings', word.toLowerCase()), { text, updatedAt: Date.now() }, { merge: true });
+    } catch (e) { console.error('saveMeaningCloud error:', e); }
+  }
+
+  async getMeaningsBatchCloud(words: string[]): Promise<{ [word: string]: string }> {
+    if (!this.db || !words.length) return {};
+    const res: { [word: string]: string } = {};
+    const promises = words.map(async (w) => {
+      const clean = w.trim().toLowerCase();
+      if (!clean) return;
+      try {
+        const snap = await getDoc(doc(this.db!, 'meanings', clean));
+        if (snap.exists() && snap.data()?.['text']) {
+          res[clean] = snap.data()['text'];
+        }
+      } catch {}
+    });
+    await Promise.allSettled(promises);
+    return res;
   }
 }

@@ -1,9 +1,8 @@
 import { Component, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
 import { SpeechService } from './speech.service';
 import { StoreService } from './store.service';
+import { UI } from './ui';
 
 interface Def { pos: string; text: string; }
 interface WordItem { word: string; defs: Def[]; open: boolean; loading: boolean; }
@@ -13,59 +12,59 @@ const POS: { [k: string]: string } = { n: 'noun', v: 'verb', adj: 'adjective', a
 @Component({
   selector: 'app-dictionary',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [FormsModule, ...UI],
   template: `
-  <div class="appbar"><a routerLink="/"><button class="sec">← Home</button></a><div class="appbar-title">📖 Dictionary</div></div>
-  <div class="card">
-    <div class="row">
-      <input type="text" [(ngModel)]="query" (keyup.enter)="search()" placeholder="Search any word…" autocomplete="off" spellcheck="false" style="flex:1;min-width:180px">
-      <button (click)="search()">🔎 Search</button>
-    </div>
+  <div class="page narrow">
+    <ui-page-head title="Dictionary" sub="Look up a word, hear it, and save it to practise" back="/"/>
+    <section class="card">
+      <form class="row" style="flex-wrap:nowrap" (submit)="$event.preventDefault(); search()">
+        <div class="field-wrap" style="flex:1">
+          <ui-icon name="search"/>
+          <input class="field" type="search" name="q" [(ngModel)]="query" placeholder="Search any word…" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" aria-label="Search">
+        </div>
+        <button class="btn btn-primary" type="submit" style="height:50px">Search</button>
+      </form>
 
-    <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:12px">
-      @for (l of letters; track l) {
-        <button class="sec" [class.on]="activeLetter === l" (click)="browse(l)" style="min-width:38px;padding:8px 0;text-transform:uppercase">{{ l }}</button>
-      }
-    </div>
+      <div class="az" role="toolbar" aria-label="Browse by letter">
+        @for (l of letters; track l) {
+          <button [class.on]="activeLetter === l" (click)="browse(l)" [attr.aria-pressed]="activeLetter === l">{{ l }}</button>
+        }
+      </div>
 
-    @if (loading) { <p class="note">Fetching words…</p> }
-    @if (error) { <p class="note" style="color:#c0392b">{{ error }}</p> }
-    @if (!loading && !error && words.length) { <p class="hint" style="margin-top:12px">{{ words.length }} words{{ activeLetter ? ' starting with “' + activeLetter + '”' : '' }} · tap a word to see its meaning</p> }
+      @if (added) { <div class="feedback good" style="max-width:none"><ui-icon name="checkCircle"/>{{ added }}</div> }
 
-    <div style="margin-top:8px">
-      @for (w of words; track w.word) {
-        <div style="border-bottom:1px solid var(--line, #e4dccb);padding:10px 2px">
-          <div class="row" style="align-items:center;gap:8px">
-            <button class="linklike" (click)="toggle(w)" style="flex:1;text-align:left;font-size:20px;font-weight:bold">
-              {{ w.open ? '▾' : '▸' }} {{ w.word }}
-            </button>
-            <button class="linklike" (click)="sp.say(w.word, { rate: 1 })" title="Say it">🔊</button>
-            <button class="linklike" (click)="add(w.word)" title="Add to my words">➕</button>
-          </div>
-          @if (w.open) {
-            <div style="padding:6px 0 4px 16px">
-              @if (w.loading) { <span class="hint">Loading meaning…</span> }
-              @else if (w.defs.length) {
-                <ol style="margin:0;padding-left:20px">
-                  @for (d of w.defs; track $index) {
-                    <li style="margin-bottom:6px">
-                      @if (d.pos) { <em class="hint" style="margin:0">{{ d.pos }} — </em> }
-                      <span>{{ d.text }}</span>
-                    </li>
+      @if (loading) {
+        <div class="empty"><span class="spinner"></span><div style="margin-top:10px">Fetching words…</div></div>
+      } @else if (error) {
+        <div class="empty"><span class="ic-tile"><ui-icon name="wifiOff"/></span>{{ error }}</div>
+      } @else if (words.length) {
+        <p class="muted small" style="margin-top:16px">{{ words.length }} words{{ activeLetter ? ' starting with “' + activeLetter.toUpperCase() + '”' : '' }} · tap a word for its meaning</p>
+        <div class="dict-list">
+          @for (w of words; track w.word) {
+            <div class="dict-item">
+              <div class="dict-row">
+                <button class="dict-word" [class.open]="w.open" (click)="toggle(w)" [attr.aria-expanded]="w.open"><ui-icon name="chevR"/>{{ w.word }}</button>
+                <button class="icon-btn sm" (click)="sp.say(w.word, { rate: 1 })" [attr.aria-label]="'Hear ' + w.word"><ui-icon name="volume"/></button>
+                <button class="icon-btn sm" (click)="add(w.word)" [attr.aria-label]="'Add ' + w.word + ' to My Dictionary list'"><ui-icon name="plus"/></button>
+              </div>
+              @if (w.open) {
+                <div class="dict-defs">
+                  @if (w.loading) { <span class="muted small">Loading meaning…</span> }
+                  @else if (w.defs.length) {
+                    <ol>
+                      @for (d of w.defs; track $index) { <li>@if (d.pos) { <span class="pos">{{ d.pos }}</span> }{{ d.text }}</li> }
+                    </ol>
                   }
-                </ol>
+                  @else { <span class="muted small">No meaning found for this word.</span> }
+                </div>
               }
-              @else { <span class="hint">No meaning found for this word.</span> }
             </div>
           }
         </div>
+      } @else {
+        <div class="empty"><span class="ic-tile"><ui-icon name="book"/></span>Pick a letter to browse, or search for any word.<br><span class="small">Meanings are fetched live, so you need an internet connection.</span></div>
       }
-    </div>
-
-    @if (!loading && !words.length && !error) {
-      <p class="note">Pick a letter above to browse the dictionary, or search for any word. Words and meanings are fetched live from the internet, so you need a connection.</p>
-    }
-    @if (added) { <p class="note" style="color:#2e7d32">{{ added }}</p> }
+    </section>
   </div>
   `
 })
@@ -83,7 +82,7 @@ export class DictionaryComponent {
   browse(letter: string) { this.activeLetter = letter; this.query = ''; this.fetchWords(letter); }
   search() {
     const q = this.query.trim().toLowerCase();
-    if (!q) { this.error = 'Type a word to search.'; return; }
+    if (!q) { this.error = 'Type a word to search.'; this.words = []; return; }
     this.activeLetter = '';
     this.fetchWords(q);
   }
@@ -147,6 +146,6 @@ export class DictionaryComponent {
     if (!arr.includes(word)) arr.push(word);
     lists[key] = arr;
     this.store.set('lists_ng', lists);
-    this.added = `Added “${word}” to your “My Dictionary” list (${arr.length} words).`;
+    this.added = `Added “${word}” to “My Dictionary” (${arr.length} words).`;
   }
 }

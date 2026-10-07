@@ -45,6 +45,13 @@ export class StoreService {
   }
   save() { try { localStorage.setItem('spellquest_ng', JSON.stringify(this.G)); } catch {} if (this.onSave) this.onSave(); }
 
+  /** Wipe the signed-in user's progress and word lists from this device (keeps display/voice preferences). */
+  clearUserData() {
+    for (const k of ['spellquest_ng', 'lists_ng', 'planDay']) { try { localStorage.removeItem(k); } catch {} }
+    this.G = this.load();
+    this.pendingTest = null;
+  }
+
   mergeRemote(g: any, lists: any) {
     const G = this.G;
     G.xp = Math.max(G.xp, g.xp || 0);
@@ -72,6 +79,17 @@ export class StoreService {
   levelFor(xp: number) { return Math.floor(xp / 100) + 1; }
   get level() { return this.levelFor(this.G.xp); }
   totalStars() { return Object.values(this.G.days).reduce((a, d) => a + (d.stars || 0), 0); }
+
+  /** Apply the saved reading/theme preferences to <body> and the browser chrome colour. */
+  applyTheme() {
+    const b = document.body;
+    b.classList.toggle('easy', this.get('easy', true));
+    const bg = this.get<string>('bg', 'cream');
+    b.classList.toggle('plainwhite', bg === 'white');
+    b.classList.toggle('dark', bg === 'dark');
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', bg === 'dark' ? '#111217' : bg === 'white' ? '#ffffff' : '#f6f3ec');
+  }
 
   toast(msg: string) { this.toastMsg = msg; setTimeout(() => { if (this.toastMsg === msg) this.toastMsg = ''; }, 2600); }
 
